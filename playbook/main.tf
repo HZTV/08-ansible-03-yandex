@@ -29,6 +29,6 @@ ${i["name"]}:
       ansible_user: ubuntu
   %{endfor}
   EOT
-  filename = "/home/mng/Desktop/готовые домашние задания ансибл/3/ansb-02/playbook/inventory/prod.yml"
+  filename = "./inventory/prod.yml"
 
 }
