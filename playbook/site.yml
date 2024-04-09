@@ -1,0 +1,174 @@
+---
+- name: Install Clickhouse
+  hosts: clickhouse-01
+  handlers:
+    - name: Start clickhouse service
+      become: true
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+# Подключение по SSH
+  pre_tasks:
+    - block:
+        - name: SSH-Autorization
+          ansible.posix.authorized_key:
+            user: "{{ ansible_user }}"
+            state: present
+            key: "{{ lookup ( 'file', '/home/mng/Desktop/OPEN-KEY') }}"
+  tasks:
+    - block:
+        - name: Get clickhouse distrib-1
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/deb/pool/main/c/{{ item }}/{{ item }}_{{ clickhouse_version }}_all.deb"
+            dest: "./{{ item }}-{{ clickhouse_version }}.deb"
+          with_items: "{{ clickhouse_packages }}"
+      rescue:
+# Установка только clickhouse-common-static!
+        - name: Get clickhouse distrib-2
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/deb/pool/main/c/clickhouse-common-static/clickhouse-common-static_{{ clickhouse_version }}_amd64.deb"
+            dest: "./clickhouse-common-static-{{ clickhouse_version }}_amd64.deb"
+    - name: Install clickhouse packages
+      become: true
+      become_method: sudo
+      ansible.builtin.apt:
+        deb: "./{{ item.1 }}"
+      with_indexed_items:
+          - clickhouse-common-static-{{ clickhouse_version }}_amd64.deb
+          - clickhouse-client-{{ clickhouse_version }}.deb
+          - clickhouse-server-{{ clickhouse_version }}.deb
+      notify: Start clickhouse service
+    - name: Flush handlers  #Ждем, для того, чтобы не было ошибок при создании базы
+      ansible.builtin.meta: flush_handlers
+    - name: Wait 20 service
+      ansible.builtin.pause:
+        seconds: 20
+    - name: Create database
+      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      register: create_db
+      failed_when: create_db.rc != 0 and create_db.rc !=82
+      changed_when: create_db.rc == 0
+
+
+- name: Install vector
+  hosts: vector
+  handlers:
+    - name: Start vector service
+      become: true
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+# Подключение по SSH
+  pre_tasks:
+    - block:
+        - name: SSH-Autorization
+          ansible.posix.authorized_key:
+            user: "{{ ansible_user }}"
+            state: present
+            key: "{{ lookup ( 'file', '/home/mng/Desktop/OPEN-KEY') }}"
+  tasks:
+    - name: Get vector distrib
+      ansible.builtin.get_url:
+        url: "https://packages.timber.io/vector/{{ vector_version }}/vector_{{ vector_version }}-1_amd64.deb"
+        dest: "./vector-{{ vector_version }}.deb"
+        mode: "0777"
+    - name: Install vector packages
+      become: true
+      ansible.builtin.apt:
+        update_cache: yes
+        deb: "./{{ item.1 }}"
+      with_indexed_items:
+      - vector-{{ vector_version }}.deb
+    - name: Flush handlers to restart vector
+      meta: flush_handlers
+# Для деплоя конфига вектора
+    - name: Deploy config Vector
+      become: true
+      ansible.builtin.template:
+        src: "./template/vector.toml.j2"
+        dest: "/etc/vector"
+        owner: root
+        group: root
+        mode: "0755"
+# Для перезапуска вектора. 
+  post_tasks:
+    - name: Start vector service
+      become: true
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+
+
+- name: Install nginx
+  hosts: lighthouse
+  handlers:
+    - name: Start nginx service
+      become: true
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+# Подключение по SSH
+  pre_tasks:
+    - block:
+        - name: SSH-Autorization
+          ansible.posix.authorized_key:
+            user: "{{ ansible_user }}"
+            state: present
+            key: "{{ lookup ( 'file', '/home/mng/Desktop/OPEN-KEY') }}"
+  tasks:
+    - name: update apt
+      become: true
+      ansible.builtin.command: sudo apt-get update
+    - name: Update apt cache and install nginx
+      become: true
+      ansible.builtin.apt:
+        name: nginx
+        state: latest
+        update_cache: yes
+    - name: install ligthouse config
+      become: true
+      ansible.builtin.template:
+        src: "./template/nginx.conf.j2"
+        dest: "/etc/nginx/conf.d/defult.conf"
+        mode: "0644"
+    - name: Flush handlers nginx  #Ждем, для того, чтобы не было при перезапуске
+      ansible.builtin.meta: flush_handlers
+    - name: Wait 10 sec
+      ansible.builtin.pause:
+        seconds: 10
+      notify: Start nginx service
+
+
+- name: Install lightHouse
+  hosts: lighthouse
+  handlers:
+    - name: Start lighthouse service
+      become: true
+      ansible.builtin.service:
+        name: lighthouse
+        state: restarted
+# Подключение по SSH
+  pre_tasks:
+    - block:
+        - name: SSH-Autorization
+          ansible.posix.authorized_key:
+            user: "{{ ansible_user }}"
+            state: present
+            key: "{{ lookup ( 'file', '/home/mng/Desktop/OPEN-KEY') }}"
+# Заливаем скрипт установки lighthouse
+  tasks:
+    - name: copy install file
+      become: true
+      ansible.builtin.copy:
+        src: "template/script.sh"
+        dest: "/opt"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+# Запускаем скрипт установки lighthouse
+    - name: execute script for install lightHouse
+      become: true
+      ansible.builtin.command: bash /opt/script.sh
+
+
+
