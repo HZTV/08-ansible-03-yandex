@@ -8,7 +8,7 @@
 В var.tf - все переменные для terrafom кода.
 В instance.tf - создаются ВМ методом for_each
 ```  
-2) Для установки lighthouse используется bash скрипт, который лежит в ./ansb-02/playbook/template
+2) Для установки lighthouse используется bash скрипт, который лежит в ./playbook/template
    
 ### Задание 1.
 
